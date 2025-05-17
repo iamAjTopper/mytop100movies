@@ -65,6 +65,12 @@ func main() {
 		}
 	})
 
+	http.HandleFunc("/top100/delete", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			handlers.DeleteUserTop100(w, r)
+		}
+	})
+
 	http.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			handle.SearchTMDbMovie(w, r)

@@ -8,6 +8,7 @@ import (
 	database "mytop100movies/database"
 	models "mytop100movies/models"
 	"net/http"
+	"strconv"
 )
 
 func CreateUser(w http.ResponseWriter, r *http.Request) {
@@ -172,27 +173,37 @@ func AddMovieToUserTop100(w http.ResponseWriter, r *http.Request) {
 }
 
 func UpdateUserMovie(w http.ResponseWriter, r *http.Request) {
-	var userMovie models.UserMovie
+	if r.Method != http.MethodPut {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
 
-	if err := json.NewDecoder(r.Body).Decode(&userMovie); err != nil {
+	var input struct {
+		UserMovieID int    `json:"user_movie_id"`
+		Rank        int    `json:"rank"`
+		Notes       string `json:"notes"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		log.Printf("Decode error: %v", err)
 		http.Error(w, "Invalid Input", http.StatusBadRequest)
 		return
 	}
 
-	updateQuery := `UPDATE user_movies SET rank = $1, notes = $2 WHERE user_id = $3 AND movie_id=$4`
+	log.Printf("Input received: %+v", input) // DEBUG
 
-	result, err := database.DB.Exec(updateQuery, userMovie.Rank, userMovie.Notes, userMovie.UserId, userMovie.MovieID)
+	query := `UPDATE user_movies SET rank =$1, notes = $2 WHERE id =$3`
+
+	_, err := database.DB.Exec(query, input.Rank, input.Notes, input.UserMovieID)
 	if err != nil {
-		http.Error(w, "Update Failed", http.StatusInternalServerError)
+		log.Printf("DB Update error: %v", err)
+
+		http.Error(w, "Failed to update movie", http.StatusInternalServerError)
 		return
 	}
-	rowsAffected, _ := result.RowsAffected()
-	if rowsAffected == 0 {
-		http.Error(w, "No Record Found To Be Updated", http.StatusNotFound)
-		return
-	}
+
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Updated Succesfully"))
+	w.Write([]byte(`{"message": "Movie update succesfully"}`))
 }
 
 func GetUserTop100(w http.ResponseWriter, r *http.Request) {
@@ -258,4 +269,27 @@ func GetUserTop100(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+func DeleteUserTop100(w http.ResponseWriter, r *http.Request) {
+	userIDStr := r.URL.Query().Get("user_id")
+	if userIDStr == "" {
+		http.Error(w, "Missing user_id parameter", http.StatusBadRequest)
+		return
+	}
+
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		http.Error(w, "Invalid user_id", http.StatusBadRequest)
+		return
+	}
+
+	_, err = database.DB.Exec("DELETE FROM user_movies WHERE user_id = $1", userID)
+	if err != nil {
+		http.Error(w, "Failed to clear list", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Top 100 List Cleared"))
 }
